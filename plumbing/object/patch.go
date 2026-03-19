@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
@@ -65,7 +66,22 @@ func filePatchWithContext(ctx context.Context, c *Change) (fdiff.FilePatch, erro
 		return &textFilePatch{from: c.From, to: c.To}, nil
 	}
 
-	diffs := diff.Do(fromContent, toContent)
+	var diffs []dmp.Diff
+	var remaining time.Duration
+	// Check whether the ctx has a configured deadline (timeout),
+	// and compute the remaining time until the deadline if present.
+	deadline, ok := ctx.Deadline()
+	if ok {
+		remaining = time.Until(deadline)
+	}
+	// Choose the appropriate diff method based on the remaining timeout duration.
+	// If there's no remaining time (or it's negative), use the regular diff.Do.
+	// Otherwise, use diff.DoWithTimeout with the calculated remaining time.
+	if remaining <= 0 {
+		diffs = diff.Do(fromContent, toContent)
+	} else {
+		diffs = diff.DoWithTimeout(fromContent, toContent, remaining)
+	}
 
 	var chunks []fdiff.Chunk
 	for _, d := range diffs {
